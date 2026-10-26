@@ -1,0 +1,10 @@
+.venv/
+.build-venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+tools/deno.exe
+tools/deno
+.superpowers/
