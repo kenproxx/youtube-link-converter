@@ -1,5 +1,5 @@
 """Pure conversion rules; no GUI, network or process side effects."""
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import re
 from urllib.parse import parse_qs, urlsplit
@@ -8,7 +8,7 @@ QUALITY_OPTIONS = {'Tốt nhất có thể': None, '360p': 360, '480p': 480, '72
 VIDEO_ID = re.compile(r'^[A-Za-z0-9_-]{11}$')
 HOSTS = {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com',
          'youtu.be', 'www.youtu.be'}
-RESERVED = re.compile(r'^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\.|$)', re.I)
+RESERVED = re.compile(r'^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³]) *?(?:\.|$)', re.I)
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class ConversionResult:
     height: int | None = None
     error: str | None = None
     requested_quality: int | None = None
+    headers: dict = field(default_factory=dict)
 
 
 def parse_urls(text):
@@ -57,13 +58,19 @@ def _requires_auth(headers):
     return any(k.lower() in ('cookie', 'authorization') and v for k, v in (headers or {}).items())
 
 
+def _unsupported_headers(headers):
+    standard = {'user-agent', 'referer', 'accept', 'accept-language', 'accept-encoding',
+                'connection', 'dnt', 'upgrade-insecure-requests'}
+    return any(k.lower() not in standard and v for k, v in (headers or {}).items())
+
+
 def select_format(info, quality=None):
     if quality is not None and quality not in (360, 480, 720, 1080):
         raise ValueError('Mức chất lượng không hợp lệ.')
     if info.get('is_live') or info.get('live_status') == 'is_live':
         raise ValueError('Video đang phát trực tiếp; hãy thử lại sau khi phát xong.')
-    if _requires_auth(info.get('http_headers')):
-        raise ValueError('Link cần cookie/đăng nhập, không thể chuyển trực tiếp sang IDM.')
+    if _requires_auth(info.get('http_headers')) or _unsupported_headers(info.get('http_headers')):
+        raise ValueError('Link cần xác thực hoặc header riêng không thể chuyển trực tiếp sang IDM.')
     candidates = []
     for f in info.get('formats') or []:
         url = f.get('url') or ''
@@ -78,7 +85,7 @@ def select_format(info, quality=None):
                 or f.get('acodec') in (None, '', 'none')
                 or f.get('has_drm') or f.get('manifest_url') or f.get('fragments')
                 or p.path.lower().endswith(('.m3u8', '.mpd'))
-                or _requires_auth(f.get('http_headers'))):
+                or _requires_auth(f.get('http_headers')) or _unsupported_headers(f.get('http_headers'))):
             continue
         height = f.get('height')
         if quality is not None and (not height or height > quality):

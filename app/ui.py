@@ -56,7 +56,7 @@ class ConverterApp:
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
         self.table.bind('<<TreeviewSelect>>', self.show_details)
-        self.details = ScrolledText(main, height=3, wrap='word', state='disabled', font=('Segoe UI', 9))
+        self.details = ScrolledText(main, height=5, wrap='word', state='disabled', font=('Segoe UI', 9))
         self.details.pack(fill='x', pady=8)
         actions = ttk.Frame(main)
         actions.pack(fill='x')
@@ -158,6 +158,8 @@ class ConverterApp:
         if selected:
             r = self.results[int(selected[0])]
             text = f'{r.source}\n{r.error or r.url}'
+            if not r.error and r.headers:
+                text += '\nHeader có thể cần cấu hình trong IDM:\n' + '\n'.join(f'{k}: {v}' for k, v in r.headers.items())
         self.details.configure(state='normal')
         self.details.delete('1.0', 'end')
         self.details.insert('1.0', text)

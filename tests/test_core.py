@@ -81,6 +81,11 @@ class FormatTests(unittest.TestCase):
         del f['protocol']
         self.assertEqual(select_format({'formats': [f]}, 720)['format_id'], '18')
 
+    def test_rejects_custom_headers_that_idm_cannot_forward(self):
+        f = media('360', 360, http_headers={'X-Custom-Token': 'needed'})
+        with self.assertRaises(ValueError):
+            select_format({'formats': [f]}, None)
+
     def test_rejects_active_live_stream(self):
         with self.assertRaises(ValueError):
             select_format({'is_live': True, 'formats': [media('360', 360)]}, None)
@@ -101,6 +106,12 @@ class FilenameTests(unittest.TestCase):
         self.assertLessEqual(len(safe_filename('🎵' * 300, 'mp4').encode('utf-16-le')) // 2, 180)
         self.assertEqual(safe_filename('', 'mp4'), 'video.mp4')
         self.assertEqual(safe_filename('../evil', '../../bat'), '.._evil.mp4')
+
+    def test_windows_device_aliases_and_spaces_before_extension(self):
+        for title, expected in [('CON .txt', '_CON .txt.mp4'), ('conin$', '_conin$.mp4'),
+                                ('CONOUT$', '_CONOUT$.mp4'), ('COM1 .video', '_COM1 .video.mp4')]:
+            with self.subTest(title=title):
+                self.assertEqual(safe_filename(title, 'mp4'), expected)
 
     def test_case_insensitive_collision_suffixes(self):
         used = set()

@@ -1,6 +1,7 @@
 """GUI entry point and headless packaged-dependency verification."""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -22,6 +23,13 @@ def self_check(output):
             raise RuntimeError('Missing bundled yt-dlp EJS solver files')
         # Tcl initialization checks packaged Tcl data without requiring a display.
         tcl = tkinter.Tcl()
+        if sys.platform == 'win32' or os.environ.get('DISPLAY'):
+            root = tkinter.Tk()
+            try:
+                root.withdraw()
+                root.update_idletasks()
+            finally:
+                root.destroy()
         result = {'ok': True, 'yt_dlp': yt_dlp.version.__version__,
                   'deno': version.splitlines()[0], 'tcl': tcl.eval('info patchlevel'),
                   'frozen': bool(getattr(sys, 'frozen', False))}

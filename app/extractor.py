@@ -4,6 +4,10 @@ import sys
 
 from .core import ConversionResult, safe_filename, select_format
 
+USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
+REFERER = 'https://www.youtube.com/'
+
 
 def bundle_root():
     return Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
@@ -33,6 +37,7 @@ def extractor_options(deno):
         'socket_timeout': 20, 'retries': 1, 'extractor_retries': 1,
         'js_runtimes': {'deno': {'path': str(deno)}},
         'remote_components': [],
+        'http_headers': {'User-Agent': USER_AGENT, 'Referer': REFERER},
     }
 
 
@@ -47,5 +52,11 @@ def convert_video(url, quality=None, ydl_factory=None):
         raise ValueError('Chỉ hỗ trợ từng video YouTube; không mở rộng playlist.')
     f = select_format(info, quality)
     title = info.get('title') or info.get('id') or 'video'
+    headers = {'user-agent': USER_AGENT, 'referer': REFERER}
+    for source in (info.get('http_headers') or {}, f.get('http_headers') or {}):
+        for key, value in source.items():
+            if key.lower() in headers:
+                headers[key.lower()] = value
     return ConversionResult(url, title, safe_filename(title, f.get('ext')), f['url'],
-                            f.get('height'), requested_quality=quality)
+                            f.get('height'), requested_quality=quality,
+                            headers={'User-Agent': headers['user-agent'], 'Referer': headers['referer']})

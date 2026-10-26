@@ -38,6 +38,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(result.filename, 'Bài hát.mp4')
         self.assertEqual(result.height, 360)
         self.assertEqual(result.url, 'https://media.example/video')
+        self.assertEqual(result.headers['Referer'], 'https://www.youtube.com/')
+        self.assertIn('Mozilla/5.0', result.headers['User-Agent'])
 
     def test_playlist_response_is_rejected(self):
         class FakeYDL:
