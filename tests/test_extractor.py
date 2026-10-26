@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from unittest.mock import patch
 
 from app.extractor import convert_video, extractor_options, find_deno
@@ -8,12 +8,19 @@ from app.extractor import convert_video, extractor_options, find_deno
 
 class ExtractorTests(unittest.TestCase):
     def test_options_disable_remote_code_and_use_explicit_runtime(self):
-        opts = extractor_options(Path('/bundle/tools/deno.exe'))
-        self.assertEqual(opts['js_runtimes'], {'deno': {'path': '/bundle/tools/deno.exe'}})
-        self.assertEqual(opts['remote_components'], [])
-        self.assertTrue(opts['noplaylist'])
-        self.assertLessEqual(opts['socket_timeout'], 20)
-        self.assertEqual(opts['retries'], 1)
+        # Check both path flavours on every host, including Windows paths with spaces.
+        cases = [
+            (PurePosixPath('/bundle/tools/deno.exe'), '/bundle/tools/deno.exe'),
+            (PureWindowsPath('C:/Build folder/tools/deno.exe'), r'C:\Build folder\tools\deno.exe'),
+        ]
+        for deno, expected_path in cases:
+            with self.subTest(path=expected_path):
+                opts = extractor_options(deno)
+                self.assertEqual(opts['js_runtimes'], {'deno': {'path': expected_path}})
+                self.assertEqual(opts['remote_components'], [])
+                self.assertTrue(opts['noplaylist'])
+                self.assertLessEqual(opts['socket_timeout'], 20)
+                self.assertEqual(opts['retries'], 1)
 
     def test_missing_runtime_reports_actionable_error(self):
         with tempfile.TemporaryDirectory() as tmp:
