@@ -3,6 +3,8 @@ import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError
+from unittest.mock import patch
 
 from tools.download_progress import fetch_bytes
 
@@ -100,3 +102,11 @@ class DownloadProgressTests(unittest.TestCase):
         with self.assertRaises(OSError):
             fetch_bytes(self.base + '/truncated', 'Deno', stream=output, interval=.01, attempts=1)
         self.assertNotIn('download complete', output.getvalue())
+
+    def test_http_error_response_is_closed_before_returning_failure(self):
+        body = io.BytesIO(b'denied')
+        error = HTTPError(self.base + '/forbidden', 403, 'Forbidden', {}, body)
+        with patch('tools.download_progress.urlopen', side_effect=error):
+            with self.assertRaises(HTTPError):
+                fetch_bytes(self.base + '/forbidden', 'Deno', stream=io.StringIO(), interval=.01)
+        self.assertTrue(body.closed, 'Error response must release its HTTP body/socket')

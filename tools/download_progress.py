@@ -70,6 +70,11 @@ def fetch_bytes(url, label, *, stream=None, interval=1.0, socket_timeout=15,
                         raise OSError(f'Incomplete download: {state["received"]}/{state["total"]} bytes')
             except Exception as exc:
                 state['error'] = exc
+                if isinstance(exc, HTTPError):
+                    try:
+                        exc.close()
+                    except OSError:
+                        pass
             finally:
                 done.set()
 
