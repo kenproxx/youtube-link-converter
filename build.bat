@@ -2,16 +2,10 @@
 setlocal
 cd /d "%~dp0"
 
-rem Build machine needs Python 3.12 x64. End users only need the resulting EXE.
-if not exist .build-venv\Scripts\python.exe (
-  where py >nul 2>nul
-  if errorlevel 1 (
-    python -m venv .build-venv
-  ) else (
-    py -3.12 -m venv .build-venv
-  )
-  if errorlevel 1 goto :error
-)
+rem Check the interpreter, not just whether the py launcher exists.
+rem If Python is missing, bootstrap verifies and installs official Python locally.
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\bootstrap_windows.ps1" -RepoRoot "%CD%"
+if errorlevel 1 goto :error
 set "BUILD_PY=%CD%\.build-venv\Scripts\python.exe"
 "%BUILD_PY%" -c "import sys,struct; assert sys.version_info[:2] == (3,12) and struct.calcsize('P') == 8, 'Build requires Python 3.12 x64'"
 if errorlevel 1 goto :error

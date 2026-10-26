@@ -8,3 +8,6 @@ dist/
 tools/deno.exe
 tools/deno
 .superpowers/
+
+.build-tools/
+.build-venv.backup-*/

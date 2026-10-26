@@ -17,6 +17,9 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
+      - name: Check Python bootstrap regressions (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./tests/windows/test_bootstrap.ps1
       - name: Build and check standalone executable
         shell: cmd
         run: build.bat --ci
@@ -32,3 +35,11 @@ jobs:
             dist/YouTubeLinkConverter.exe
             dist/self-check.json
           if-no-files-found: error
+
+  bootstrap-without-python:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise official Python install when discovery finds no runtime
+        shell: powershell
+        run: ./tests/windows/test_bootstrap_install.ps1

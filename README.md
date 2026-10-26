@@ -25,13 +25,15 @@ dist\YouTubeLinkConverter.exe
 
 File EXE kèm Python, Tcl/Tk, yt-dlp và các thư viện mặc định (gồm EJS), chứng chỉ CA và **Deno 2.5.6**. Deno được tải từ release chính thức, đối chiếu SHA-256 công bố trước khi nhúng vào EXE. Không tải runtime hay mã giải thử thách từ xa khi app chạy. Người dùng không phải cài Python, pip, thư viện hay Deno. Không cần FFmpeg vì ứng dụng chỉ chọn file đã có cả hình và tiếng, không ghép luồng. IDM là phần mềm riêng cần có nếu dùng nút gửi sang IDM.
 
-**Máy build** cần Windows x64, Python 3.12 x64 (có Tkinter), mạng tới PyPI/GitHub và chạy:
+**Máy build** cần Windows 10/11 x64, PowerShell 5.1 trở lên, mạng tới python.org/PyPI/GitHub và chạy:
 
 ```bat
 build.bat
 ```
 
-Script tự tạo `.build-venv`, cài phụ thuộc, chạy test, tải/kiểm tra Deno, build và chạy `--self-check` từ chính EXE. Kiểm tra phiên bản runtime, dữ liệu Tcl, khởi tạo cửa sổ Tk ẩn và các file JS EJS bên trong gói. Dừng build nếu lỗi. Các tệp tải xuống là đầu ra build, không commit.
+Script kiểm tra Python 3.12 x64 thật sự chạy được (không chỉ kiểm tra có launcher `py`). Nếu thiếu, tự tải Python 3.12.10 chính thức từ python.org, xác minh chữ ký Authenticode hợp lệ của **Python Software Foundation**, rồi cài vào `.build-tools/python312` cho người dùng hiện tại, không thêm PATH hay tạo shortcut. Nếu chữ ký hoặc bước cài không hợp lệ, build dừng ngay và không chạy đường dẫn Python chưa tồn tại. Môi trường `.build-venv` tạo dở/sai phiên bản được giữ thành `.build-venv.backup-*` trước khi tạo lại. Script sau đó tạo `.build-venv`, cài phụ thuộc, chạy test, tải/kiểm tra Deno, build và chạy `--self-check` từ chính EXE. Kiểm tra phiên bản runtime, dữ liệu Tcl, khởi tạo cửa sổ Tk ẩn và các file JS EJS bên trong gói. Dừng build nếu lỗi. Các tệp tải xuống là đầu ra build, không commit.
+
+Nếu máy bị chặn tải/cài Python, cài Python 3.12 x64 có Tcl/Tk từ python.org hoặc dùng artifact của GitHub Actions. Có thể dùng `py install 3.12` nếu launcher trên máy hỗ trợ Python Install Manager, sau đó chạy lại `build.bat`. Chỉ máy build cần Python; người chạy EXE hoàn chỉnh không cần cài.
 
 Có sẵn workflow **Build Windows EXE** trong `.github/workflows/build-windows.yml`, chạy trên Windows khi push vào `main`, tạo tag `v*`, mở PR vào `main`, hoặc chạy thủ công bằng `workflow_dispatch`. Tải EXE trong artifact **YouTubeLinkConverter-windows-x64** của lần chạy thành công. Workflow không tự tạo GitHub Release. Chỉ có workflow trong source chưa đồng nghĩa đã có EXE; cần chạy build Windows thành công.
 
