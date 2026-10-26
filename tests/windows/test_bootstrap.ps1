@@ -133,4 +133,17 @@ Run-Case 'native venv without pip is usable as base but not reusable as build ve
     Assert-True (Test-PythonCandidate $Candidate) 'Base interpreter with ensurepip rejected'
     Assert-True (-not (Test-PythonCandidate $Candidate -RequirePip)) 'Incomplete build venv without pip was accepted'
 }
+Run-Case 'installer wait shows activity and preserves the real process exit code' {
+    param($Root)
+    $Shell = Join-Path $PSHOME 'powershell.exe'
+    if (-not (Test-Path -LiteralPath $Shell)) { $Shell = Join-Path $PSHOME 'pwsh' }
+    $Process = Start-Process -FilePath $Shell -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Milliseconds 1300; exit 7') -PassThru
+    try {
+        $Capture = @(Wait-InstallerWithProgress $Process 'Python' 6>&1)
+        Assert-True ($Capture[-1] -eq 7) 'Installer process exit code was lost'
+        $Text = ($Capture | ForEach-Object { $_.ToString() }) -join "`n"
+        Assert-True ($Text -match 'still installing') 'No installer heartbeat was displayed'
+        Assert-True ($Text -match 'elapsed') 'Elapsed installation time not displayed'
+    } finally { $Process.Dispose() }
+}
 Write-Host "$script:Passed bootstrap checks passed."

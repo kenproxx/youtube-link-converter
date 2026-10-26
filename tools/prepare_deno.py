@@ -5,8 +5,12 @@ import io
 from pathlib import Path
 import re
 import sys
-from urllib.request import urlopen
 import zipfile
+
+if __package__:
+    from .download_progress import fetch_bytes
+else:
+    from download_progress import fetch_bytes
 
 DENO_VERSION = '2.5.6'
 TARGETS = {'windows': ('deno-x86_64-pc-windows-msvc.zip', 'deno.exe'),
@@ -35,20 +39,48 @@ def unpack_verified(data, expected, member, output):
     temp.replace(output)
 
 
-def prepare(target):
+def prepare(target, *, project_root=None, stream=None):
+    stream = sys.stdout if stream is None else stream
+    root = Path(project_root) if project_root is not None else Path(__file__).resolve().parent.parent
     asset, member = TARGETS[target]
     base = f'https://github.com/denoland/deno/releases/download/v{DENO_VERSION}/{asset}'
-    with urlopen(base + '.sha256sum', timeout=60) as response:
-        checksum = parse_checksum(response.read().decode('utf-8-sig'))
-    with urlopen(base, timeout=60) as response:
-        data = response.read()
-    output = Path(__file__).resolve().parent / member
+    print(f'[Deno] Preparing version {DENO_VERSION} for {target}', file=stream, flush=True)
+    checksum = parse_checksum(fetch_bytes(base + '.sha256sum', 'Deno checksum', stream=stream).decode('utf-8-sig'))
+    cache = root / '.build-tools' / 'downloads' / f'deno-{DENO_VERSION}-{asset}'
+    data = cache.read_bytes() if cache.is_file() else None
+    if data is not None and hashlib.sha256(data).hexdigest() == checksum:
+        print('[Deno] Using verified cached archive; no asset download needed.', file=stream, flush=True)
+    else:
+        if data is not None:
+            print('[Deno] Cached archive failed checksum; downloading a fresh copy.', file=stream, flush=True)
+        data = fetch_bytes(base, 'Deno archive', stream=stream)
+    print('[Deno] Checking archive SHA-256...', file=stream, flush=True)
+    if hashlib.sha256(data).hexdigest() != checksum:
+        raise ValueError('Deno SHA-256 mismatch: refusing to use downloaded archive')
+    print('[Deno] SHA-256 verified. Extracting runtime...', file=stream, flush=True)
+    output = root / 'tools' / member
     unpack_verified(data, checksum, member, output)
-    print(f'Verified Deno {DENO_VERSION} for {target}: {output.name}')
+    temporary_cache = cache.with_suffix('.zip.part')
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        temporary_cache.write_bytes(data)
+        temporary_cache.replace(cache)
+    except OSError as exc:
+        print(f'[Deno] Runtime ready, but archive cache could not be saved: {exc}', file=stream, flush=True)
+        try:
+            temporary_cache.unlink(missing_ok=True)
+        except OSError:
+            pass
+    print(f'[Deno] Ready: {output}', file=stream, flush=True)
     return output
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--target', choices=TARGETS, default='windows' if sys.platform == 'win32' else 'linux')
-    prepare(parser.parse_args().target)
+    try:
+        prepare(parser.parse_args().target)
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        parser.exit(1, f'DENO SETUP FAILED: {exc}. Check access to GitHub and rerun build.bat.\n')
+    except KeyboardInterrupt:
+        parser.exit(130, 'Deno setup cancelled. No unverified archive was installed.\n')

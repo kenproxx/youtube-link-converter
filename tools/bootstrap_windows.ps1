@@ -46,6 +46,21 @@ function Assert-OfficialPythonInstaller {
     }
 }
 
+function Wait-InstallerWithProgress {
+    param($Process, [string] $Label)
+    $Clock = [Diagnostics.Stopwatch]::StartNew()
+    Write-Host "[$Label] Installing (elapsed 0s). Windows Installer does not provide a percentage."
+    while (-not $Process.WaitForExit(1000)) {
+        Write-Host ("[$Label] still installing | elapsed {0:N0}s | please wait..." -f $Clock.Elapsed.TotalSeconds)
+    }
+    $Process.WaitForExit()
+    $Process.Refresh()
+    $Code = $Process.ExitCode
+    if ($null -eq $Code) { throw "$Label installer exit code is unavailable; setup cannot be verified." }
+    Write-Host ("[$Label] Installer finished | elapsed {0:N1}s | exit code $Code" -f $Clock.Elapsed.TotalSeconds)
+    return $Code
+}
+
 function Install-BuildPython {
     param([string] $RepoRoot)
     $Version = '3.12.10'
@@ -55,18 +70,24 @@ function Install-BuildPython {
     New-Item -ItemType Directory -Path $Tools -Force | Out-Null
     Write-Host "No working Python 3.12 x64 found. Preparing Python $Version for this build..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $ProgressPreference = 'SilentlyContinue'
+    $ProgressPreference = 'Continue'
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri "https://www.python.org/ftp/python/$Version/python-$Version-amd64.exe" -OutFile $Installer
+        Write-Host '[Python] Downloading official installer; native download progress below (network timeout 120s)...'
+        Invoke-WebRequest -UseBasicParsing -Uri "https://www.python.org/ftp/python/$Version/python-$Version-amd64.exe" -OutFile $Installer -TimeoutSec 120
+        Write-Host '[Python] Download complete. Verifying publisher signature...'
         Assert-OfficialPythonInstaller $Installer
+        Write-Host '[Python] Publisher signature verified. Starting installation...'
         # Per-user install; do not change PATH, file associations, shortcuts or launcher.
         $Arguments = @('/quiet', 'InstallAllUsers=0', ('TargetDir="' + $Target + '"'),
                        'Include_pip=1', 'Include_tcltk=1', 'Include_test=0', 'Include_doc=0',
                        'Include_launcher=0', 'InstallLauncherAllUsers=0', 'AssociateFiles=0',
-                       'Shortcuts=0', 'PrependPath=0')
-        $Process = Start-Process -FilePath $Installer -ArgumentList $Arguments -Wait -PassThru
-        if ($Process.ExitCode -notin @(0, 3010)) {
-            throw "Python installer failed (exit $($Process.ExitCode)). Install Python 3.12 x64 with Tcl/Tk from python.org, then rerun build.bat."
+                       'Shortcuts=0', 'PrependPath=0', '/log', ('"' + (Join-Path $Tools 'python-install.log') + '"'))
+        Write-Host ('[Python] Installer log: ' + (Join-Path $Tools 'python-install.log'))
+        $Process = Start-Process -FilePath $Installer -ArgumentList $Arguments -PassThru
+        try { $Code = Wait-InstallerWithProgress $Process 'Python' }
+        finally { $Process.Dispose() }
+        if ($Code -notin @(0, 3010)) {
+            throw "Python installer failed (exit $Code). See .build-tools/python-install.log; install Python 3.12 x64 with Tcl/Tk from python.org, then rerun build.bat."
         }
     } finally {
         if (Test-Path -LiteralPath $Installer) { Remove-Item -LiteralPath $Installer -Force }
@@ -101,10 +122,12 @@ function Ensure-BuildEnvironment {
         Move-Item -LiteralPath $Venv -Destination $Backup
         Write-Host "Preserved incomplete or incompatible build environment: $Backup"
     }
+    Write-Host '[Python] Creating build virtual environment and installing its pip...'
     Invoke-CreateVenv $Candidate $Venv
     if (-not (Test-PythonCandidate $Existing -RequirePip)) {
         throw 'Build virtual environment verification failed. No build commands were executed with the missing interpreter.'
     }
+    Write-Host '[Python] Build environment and pip verified.'
     return $VenvPython
 }
 

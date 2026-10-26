@@ -35,6 +35,10 @@ Script kiểm tra Python 3.12 x64 thật sự chạy được (không chỉ ki�
 
 Nếu máy bị chặn tải/cài Python, cài Python 3.12 x64 có Tcl/Tk từ python.org hoặc dùng artifact của GitHub Actions. Có thể dùng `py install 3.12` nếu launcher trên máy hỗ trợ Python Install Manager, sau đó chạy lại `build.bat`. Chỉ máy build cần Python; người chạy EXE hoàn chỉnh không cần cài.
 
+Cửa sổ build chia rõ 6 bước. Khi tải Deno, tiến độ cập nhật khoảng mỗi giây: phần trăm và MiB (nếu máy chủ cung cấp dung lượng), tốc độ trung bình, ETA và thời gian đã chờ; không có dung lượng thì ghi rõ chưa biết tổng số byte. Trạng thái kết nối/chờ dữ liệu vẫn cập nhật. Tải có timeout kết nối/đọc 15 giây, giới hạn không có dữ liệu 30 giây, tối đa 10 phút mỗi lượt và tối đa 2 lượt cho lỗi mạng tạm thời. Lỗi chứng chỉ hoặc truy cập bị từ chối không bị che bằng retry. Sau khi tải, màn hình báo riêng kiểm tra SHA-256, giải nén và sẵn sàng.
+
+Archive Deno được lưu ở `.build-tools/downloads` sau khi xác minh. Lần build sau vẫn lấy checksum chính thức và kiểm tra cache; nếu khớp thì bỏ qua tải archive. Python bật tiến độ tải có sẵn của PowerShell; khi cài đặt sẽ hiện thời gian đã chạy mỗi giây, thay vì phần trăm giả. Log cài Python ở `.build-tools/python-install.log`. Pip cũng được bật thanh tiến độ tải.
+
 Có sẵn workflow **Build Windows EXE** trong `.github/workflows/build-windows.yml`, chạy trên Windows khi push vào `main`, tạo tag `v*`, mở PR vào `main`, hoặc chạy thủ công bằng `workflow_dispatch`. Tải EXE trong artifact **YouTubeLinkConverter-windows-x64** của lần chạy thành công. Workflow không tự tạo GitHub Release. Chỉ có workflow trong source chưa đồng nghĩa đã có EXE; cần chạy build Windows thành công.
 
 ## Giới hạn cần biết
