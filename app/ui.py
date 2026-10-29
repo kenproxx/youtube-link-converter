@@ -10,6 +10,7 @@ from .core import QUALITY_OPTIONS, export_txt, parse_urls, run_batch
 from .extractor import convert_video
 from .idm import enqueue, find_idm
 from .downloader import download_video
+from .auth import CookieSource
 
 
 class ConverterApp:
@@ -21,8 +22,8 @@ class ConverterApp:
         self.results, self.events = [], Queue()
         self.cancel, self.busy = Event(), False
         self.root.title('YouTube Link Converter — IDM')
-        self.root.geometry('1080x760')
-        self.root.minsize(980, 650)
+        self.root.geometry('1080x820')
+        self.root.minsize(980, 720)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
         main = ttk.Frame(root, padding=16)
         main.pack(fill='both', expand=True)
@@ -30,6 +31,23 @@ class ConverterApp:
         ttk.Label(main, text='Dán mỗi dòng một video. Lấy link IDM hoặc tải/ghép MP4 có đủ hình và tiếng, đúng chất lượng.').pack(anchor='w', pady=(4, 8))
         self.input = ScrolledText(main, height=7, wrap='word', font=('Segoe UI', 10))
         self.input.pack(fill='x')
+        auth_row = ttk.Frame(main)
+        auth_row.pack(fill='x', pady=(10, 0))
+        ttk.Label(auth_row, text='Xác thực YouTube:').pack(side='left', padx=(0, 8))
+        self.cookie_mode = tk.StringVar(value='Không dùng cookie')
+        self.cookie_file, self.browser_profile = tk.StringVar(), tk.StringVar()
+        self.auth_box = ttk.Combobox(auth_row, textvariable=self.cookie_mode, state='readonly', width=20,
+            values=('Không dùng cookie', 'Firefox', 'Chrome', 'Edge', 'File cookies.txt'))
+        self.auth_box.pack(side='left')
+        self.auth_box.bind('<<ComboboxSelected>>', lambda event: self.update_auth_controls())
+        self.auth_hint = ttk.Label(auth_row)
+        self.auth_hint.pack(side='left', padx=8)
+        self.auth_entry = ttk.Entry(auth_row, width=25)
+        self.auth_entry.pack(side='left', fill='x', expand=True)
+        self.cookie_picker = ttk.Button(auth_row, text='Chọn cookies.txt', command=self.pick_cookies)
+        self.cookie_picker.pack(side='left', padx=8)
+        ttk.Button(auth_row, text='Hướng dẫn', command=self.auth_help).pack(side='left')
+        self.update_auth_controls()
         controls = ttk.Frame(main)
         controls.pack(fill='x', pady=10)
         self.import_button = ttk.Button(controls, text='Nhập TXT', command=self.import_txt)
@@ -88,6 +106,7 @@ class ConverterApp:
 
     def set_busy(self, busy, converting=False):
         self.busy = busy
+        self.update_auth_controls()
         state = 'disabled' if busy else 'normal'
         for w in (self.convert_button, self.download_button, self.import_button, self.input, self.idm_entry, self.idm_picker):
             w.configure(state=state)
@@ -98,6 +117,11 @@ class ConverterApp:
 
     def start_conversion(self, download=False):
         if self.busy:
+            return
+        try:
+            auth = self.selected_auth()
+        except ValueError as exc:
+            messagebox.showwarning('Xác thực YouTube', str(exc), parent=self.root)
             return
         urls, errors = parse_urls(self.input.get('1.0', 'end'))
         if not urls:
@@ -120,13 +144,14 @@ class ConverterApp:
         self.status.set(f'Đang xử lý {len(urls)} video — yêu cầu {self.quality.get()}...')
         def work():
             index = [0]
+            auth_options = {'auth': auth} if auth is not None else {}
             def convert(url, q):
                 if not download:
-                    return self.converter(url, q)
+                    return self.converter(url, q, **auth_options)
                 index[0] += 1
                 def progress(message):
                     self.events.put(('download_progress', f'Video {index[0]}/{len(urls)}: {message}'))
-                return self.downloader(url, q, folder, progress=progress)
+                return self.downloader(url, q, folder, progress=progress, **auth_options)
             try:
                 for r in run_batch(urls, quality, self.cancel, convert):
                     self.events.put(('result', r))
@@ -155,7 +180,7 @@ class ConverterApp:
                         resolution += f' ({value.width}×{value.height})'
                     self.table.insert('', 'end', iid=str(i), values=(value.title or value.source,
                         resolution, value.filename, status))
-                    if value.local_path:
+                    if value.local_path or value.error:
                         self.table.selection_set(str(i))
                         self.show_details()
                     self.progress.configure(value=len(self.results))
@@ -233,6 +258,45 @@ class ConverterApp:
         path = filedialog.askopenfilename(title='Chọn IDMan.exe', filetypes=[('IDM', 'IDMan.exe')], parent=self.root)
         if path:
             self.idm_path.set(path)
+
+    def update_auth_controls(self):
+        mode = self.cookie_mode.get()
+        file_mode = mode == 'File cookies.txt'
+        browser_mode = mode in ('Firefox', 'Chrome', 'Edge')
+        self.auth_box.configure(state='disabled' if self.busy else 'readonly')
+        self.auth_entry.configure(textvariable=self.cookie_file if file_mode else self.browser_profile,
+            state='disabled' if self.busy or not (file_mode or browser_mode) else 'readonly' if file_mode else 'normal')
+        self.auth_hint.configure(text='File:' if file_mode else 'Hồ sơ (trống = mặc định):')
+        self.cookie_picker.configure(state='normal' if file_mode and not self.busy else 'disabled')
+
+    def selected_auth(self):
+        mode = self.cookie_mode.get()
+        if mode == 'Không dùng cookie':
+            return None
+        if mode == 'File cookies.txt':
+            path = self.cookie_file.get().strip()
+            if not path or not Path(path).is_file():
+                raise ValueError('Hãy chọn file cookies.txt đã xuất từ YouTube bằng nút Chọn cookies.txt.')
+            return CookieSource(file=path)
+        return CookieSource(browser=mode.lower(), profile=self.browser_profile.get().strip() or None)
+
+    def pick_cookies(self):
+        path = filedialog.askopenfilename(title='Chọn cookie YouTube (Netscape cookies.txt)',
+            filetypes=[('Cookie TXT', '*.txt'), ('Tất cả', '*.*')], parent=self.root)
+        if path:
+            self.cookie_file.set(path)
+
+    def auth_help(self):
+        messagebox.showinfo('Xử lý YouTube yêu cầu xác minh',
+            '1. Mở video trên trình duyệt cùng máy/mạng; hoàn tất xác minh hoặc đăng nhập nếu cần.\n'
+            '2. Chọn Firefox, Chrome hoặc Edge trong mục Xác thực YouTube. Có thể nhập tên/đường dẫn hồ sơ nếu dùng nhiều hồ sơ.\n'
+            '3. Nếu báo lỗi đọc/giải mã cookie, đóng hoàn toàn trình duyệt rồi thử lại. Chrome/Edge trên Windows có thể chặn giải mã; '
+            'hãy dùng Firefox hoặc xuất cookie youtube.com dạng Netscape, chọn File cookies.txt rồi Chọn cookies.txt.\n'
+            '4. Chạy lại thao tác. Dùng Tải MP4 đủ tiếng nếu media cần cookie; TXT/IDM không chứa thông tin đăng nhập.\n\n'
+            'Cookie chỉ dùng khi bạn chọn nguồn và chạy; không được lưu cấu hình hay xuất vào TXT. '
+            'Không chia sẻ file cookie. Nếu vẫn bị chặn, làm mới phiên hoặc thử lại sau.\n\n'
+            'Hướng dẫn chính thức:\nhttps://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies',
+            parent=self.root)
 
     def send_idm(self):
         results, exe = self.chosen_results(), self.idm_path.get().strip()

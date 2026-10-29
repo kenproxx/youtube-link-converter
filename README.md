@@ -16,6 +16,19 @@
 
 Chọn chất lượng là yêu cầu **đúng mức đó**: chọn 1080p thì chỉ nhận 1080p, không lấy 720p, 360p hoặc mức cao hơn. Không có định dạng đạt yêu cầu thì báo lỗi và không cho xuất TXT/sao chép/gửi IDM với link sai chất lượng. **Tốt nhất có thể** chọn mức cao nhất trong các định dạng phù hợp với chế độ đang dùng. Với tải MP4, bao gồm cả video/âm thanh riêng; với link IDM, chỉ gồm định dạng một URL có đủ hình/tiếng. Với video dọc, chất lượng tính theo cạnh ngắn theo quy ước `res` của yt-dlp: `360×640` = 360p, `1080×1920` = 1080p. Bảng hiển thị cả mức chất lượng và kích thước gốc khi biết đầy đủ. Đổi lựa chọn chất lượng cần chuyển đổi lại để tạo link mới. Chỉ nhận video đơn lẻ; không tự mở rộng playlist, link trùng ID được bỏ qua. Nút dừng có tác dụng sau video hiện tại.
 
+## Lỗi “Sign in to confirm you're not a bot”
+
+Đây là phản hồi xác minh từ YouTube. Ứng dụng hỗ trợ dùng phiên cookie của bạn theo cơ chế chính thức của yt-dlp:
+
+1. Mở video bị lỗi trên trình duyệt **cùng máy/mạng**; hoàn tất xác minh hoặc đăng nhập nếu YouTube yêu cầu.
+2. Trong **Xác thực YouTube**, chọn **Firefox**, **Chrome** hoặc **Edge** đang mở được video. Mặc định ứng dụng **Không dùng cookie**, không tự đọc trình duyệt. Nếu cần, nhập tên thư mục/đường dẫn hồ sơ; để trống để yt-dlp tự tìm. Với Firefox, xem đường dẫn thư mục hồ sơ tại `about:profiles`; Chrome/Edge xem Profile Path tại `chrome://version` / `edge://version`.
+3. Chạy lại **Lấy link IDM** hoặc **Tải MP4 đủ tiếng**. Lỗi và hướng dẫn sẽ tự hiện ở phần chi tiết.
+4. Nếu Chrome/Edge báo khóa database/không giải mã được cookie, đóng hoàn toàn trình duyệt rồi thử lại. Các bản Chromium trên Windows có thể dùng mã hóa mà yt-dlp không đọc được; dùng **Firefox**, hoặc xuất cookie **youtube.com** theo định dạng **Netscape cookies.txt** rồi chọn **File cookies.txt → Chọn cookies.txt**. Không dùng JSON hay file danh sách link.
+
+Cookie chỉ được dùng khi chọn nguồn và bắt đầu xử lý. Phiên được giữ trong bộ nhớ và dùng chung khi đọc metadata, tải hình và tải tiếng; không ghi lại file cookie gốc, không lưu lựa chọn sau khi đóng ứng dụng, không xuất cookie vào TXT/IDM. Khi đọc trình duyệt, yt-dlp tạo bản sao database tạm rồi tự dọn. File cookie chứa thông tin phiên đăng nhập: giữ trên máy, không gửi lên GitHub hay chia sẻ. Link media cần cookie sẽ được hướng dẫn dùng **Tải MP4 đủ tiếng**; chế độ IDM không truyền thông tin đăng nhập ra ngoài.
+
+Nếu vẫn gặp xác minh, xuất cookie mới từ phiên đang xem được video và thử lại sau. Cookie không bảo đảm giải quyết chặn IP/giới hạn từ YouTube; app không tự giải CAPTCHA. Không cần cài thêm thư viện Python để dùng tính năng này. Bấm **Hướng dẫn** trong app hoặc xem [FAQ cookie chính thức](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp) và [cách xuất cookie YouTube](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies).
+
 ## File EXE độc lập, đóng gói như facebook-scheduler
 
 Dùng `build.bat` + PyInstaller `--onefile --windowed`, giống quy trình của `kenproxx/facebook-scheduler`. Kết quả:
@@ -47,7 +60,7 @@ Có sẵn workflow **Build Windows EXE** trong `.github/workflows/build-windows.
 - Chế độ **Lấy link IDM** chỉ xuất link **một file có cả hình và tiếng**. YouTube thường chỉ cung cấp hình/tiếng riêng ở chất lượng cao; chọn 1080p không bảo đảm có link 1080p. Video không có định dạng đúng chất lượng sẽ báo lỗi, không thay bằng link thiếu tiếng hoặc tự hạ độ phân giải. Lỗi liệt kê mức có sẵn cho link một file và báo rõ nếu có hình đúng chất lượng nhưng âm thanh tách riêng.
 - Link trực tiếp có thời hạn, có thể phụ thuộc IP/header; nên chạy ứng dụng trên cùng máy/mạng với IDM và tải sớm. Không bảo đảm mọi video đều tải được bằng IDM. Link yêu cầu Cookie/Authorization đã biết sẽ bị loại, nhưng các ràng buộc khác của YouTube vẫn có thể làm IDM từ chối.
 - TXT chỉ chứa URL nên không bảo đảm IDM tự nhận đúng tên video. **Dùng nút Thêm vào IDM để truyền tên file theo video.** Các ký tự không hợp lệ trên Windows được thay thế, giữ Unicode và tránh trùng tên trong một lần chuyển đổi. Nếu YouTube yêu cầu header, chọn dòng kết quả và xem User-Agent/Referer trong phần chi tiết để cấu hình tương ứng trong IDM. Các header tùy chỉnh khác mà tích hợp IDM không truyền được sẽ bị từ chối.
-- Chưa hỗ trợ cookie, video cần đăng nhập, DRM, playlist hoặc livestream đang phát. Nút dừng dừng sau video hiện tại; nếu đóng trong lúc xử lý, app đợi tác vụ hiện tại kết thúc rồi đóng để không bỏ lại tiến trình ghép file.
+- Cookie hỗ trợ qua nguồn người dùng chọn; không vượt quyền truy cập tài khoản hoặc DRM. Chưa hỗ trợ playlist hoặc livestream đang phát. Nút dừng dừng sau video hiện tại; nếu đóng trong lúc xử lý, app đợi tác vụ hiện tại kết thúc rồi đóng để không bỏ lại tiến trình ghép file.
 - YouTube thay đổi thường xuyên; cập nhật bản yt-dlp/Deno và build lại khi cần. Bản EXE không tự cập nhật thư viện.
 
 ## Vì sao thường chỉ lấy được 360p và cách có 1080p đủ tiếng

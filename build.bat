@@ -37,6 +37,7 @@ echo [5/6] Building standalone YouTubeLinkConverter.exe...
   --collect-all brotli ^
   --collect-all mutagen ^
   --collect-all imageio_ffmpeg ^
+  --hidden-import sqlite3 ^
   --add-binary "tools\deno.exe;tools" ^
   main.py
 if errorlevel 1 goto :error

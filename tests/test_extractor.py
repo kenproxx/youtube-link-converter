@@ -2,11 +2,27 @@ import tempfile
 import unittest
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from unittest.mock import patch
+from threading import Event
 
 from app.extractor import convert_video, extractor_options, find_deno
+from app.core import run_batch
 
 
 class ExtractorTests(unittest.TestCase):
+    def test_bot_verification_error_has_actionable_vietnamese_recovery(self):
+        from yt_dlp.utils import DownloadError
+        class BlockedYDL:
+            def __init__(self, opts): pass
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def extract_info(self, *args, **kwargs):
+                raise DownloadError("ERROR: [youtube] pvalSxVT9to: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies")
+        with patch('app.extractor.find_deno', return_value=Path('/tools/deno')):
+            result = list(run_batch(['https://youtube.com/watch?v=pvalSxVT9to'], 1080, Event(),
+                lambda url, quality: convert_video(url, quality, BlockedYDL)))[0]
+        self.assertRegex(result.error, 'Xác thực YouTube.*cookie')
+        self.assertFalse(result.url)
+
     def test_options_disable_remote_code_and_use_explicit_runtime(self):
         # Check both path flavours on every host, including Windows paths with spaces.
         cases = [

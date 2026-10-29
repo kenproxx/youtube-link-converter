@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 from .core import ConversionResult, safe_filename, select_format
+from .auth import youtube_session
 
 USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
               'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
@@ -41,16 +42,19 @@ def extractor_options(deno):
     }
 
 
-def convert_video(url, quality=None, ydl_factory=None):
+def convert_video(url, quality=None, ydl_factory=None, *, auth=None):
     if ydl_factory is None:
         from yt_dlp import YoutubeDL
         ydl_factory = YoutubeDL
     deno = find_deno()
-    with ydl_factory(extractor_options(deno)) as ydl:
+    with youtube_session(extractor_options(deno), ydl_factory, auth=auth) as ydl:
         info = ydl.extract_info(url, download=False, process=False)
-    if not info or info.get('_type', 'video') not in ('video',):
-        raise ValueError('Chỉ hỗ trợ từng video YouTube; không mở rộng playlist.')
-    f = select_format(info, quality)
+        if not info or info.get('_type', 'video') not in ('video',):
+            raise ValueError('Chỉ hỗ trợ từng video YouTube; không mở rộng playlist.')
+        f = select_format(info, quality)
+        jar = getattr(ydl, 'cookiejar', None)
+        if jar is not None and jar.get_cookie_header(f['url']):
+            raise ValueError('Link tải cần cookie, không thể xuất TXT/IDM an toàn. Hãy dùng Tải MP4 đủ tiếng.')
     title = info.get('title') or info.get('id') or 'video'
     headers = {'user-agent': USER_AGENT, 'referer': REFERER}
     for source in (info.get('http_headers') or {}, f.get('http_headers') or {}):

@@ -9,8 +9,9 @@ import tempfile
 import time
 from urllib.parse import urlsplit
 
-from .core import ConversionResult, _requires_auth, safe_filename, unique_filename, video_quality
+from .core import ConversionResult, safe_filename, unique_filename, video_quality
 from .extractor import bundle_root, extractor_options, find_deno
+from .auth import youtube_session
 
 
 def find_ffmpeg():
@@ -31,7 +32,7 @@ def _usable(f):
         return False
     return (parsed.scheme in ('http', 'https') and bool(parsed.hostname)
             and not parsed.username and not parsed.password and '\n' not in url and '\r' not in url
-            and not f.get('has_drm') and not _requires_auth(f.get('http_headers'))
+            and not f.get('has_drm')
             and f.get('protocol') in (None, 'http', 'https', 'm3u8', 'm3u8_native', 'http_dash_segments', 'dash'))
 
 
@@ -40,8 +41,6 @@ def select_download_formats(info, quality=None):
         raise ValueError('Mức chất lượng không hợp lệ.')
     if info.get('is_live') or info.get('live_status') == 'is_live':
         raise ValueError('Không tải livestream đang phát; hãy thử sau khi phát xong.')
-    if _requires_auth(info.get('http_headers')):
-        raise ValueError('Video yêu cầu đăng nhập/cookie; chưa hỗ trợ trong ứng dụng.')
     formats = [f for f in info.get('formats') or [] if _usable(f)]
     audio = [f for f in formats if f.get('vcodec') == 'none' and f.get('acodec') not in (None, '', 'none')]
     best_audio = max(audio, key=lambda f: (f.get('language_preference') or 0,
@@ -120,7 +119,7 @@ def _publish_no_overwrite(source, folder, filename):
         return target
 
 
-def download_video(url, quality, folder, *, progress=None, ydl_factory=None):
+def download_video(url, quality, folder, *, progress=None, ydl_factory=None, auth=None):
     if ydl_factory is None:
         from yt_dlp import YoutubeDL
         ydl_factory = YoutubeDL
@@ -132,8 +131,9 @@ def download_video(url, quality, folder, *, progress=None, ydl_factory=None):
     options = extractor_options(deno)
     options['ffmpeg_location'] = ffmpeg
     emit('Đang đọc các định dạng video và âm thanh...')
-    with ydl_factory(options) as ydl:
+    with youtube_session(options, ydl_factory, auth=auth) as ydl:
         info = ydl.extract_info(url, download=False, process=False)
+        cookiejar = getattr(ydl, 'cookiejar', None)
     if not info or info.get('_type', 'video') != 'video':
         raise ValueError('Chỉ hỗ trợ video đơn lẻ, không tự mở rộng playlist.')
     video, audio = select_download_formats(info, quality)
@@ -159,7 +159,7 @@ def download_video(url, quality, folder, *, progress=None, ydl_factory=None):
                           skip_unavailable_fragments=False, fragment_retries=1,
                           outtmpl=str(work / f'stream{index}.%(ext)s'), progress_hooks=[hook],
                           format=lambda context: iter([context['formats'][0]]))
-            with ydl_factory(params) as ydl:
+            with youtube_session(params, ydl_factory, cookiejar=cookiejar) as ydl:
                 processed = ydl.process_ie_result({**info, 'formats': [dict(selected)]}, download=True)
                 downloaded = Path(ydl.prepare_filename(processed))
             if not downloaded.is_file() or downloaded.stat().st_size == 0:

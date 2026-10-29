@@ -12,6 +12,7 @@ def self_check(output):
         import tkinter
         import yt_dlp.version
         import yt_dlp_ejs
+        import sqlite3
         from importlib.resources import files
         from app.extractor import find_deno
         from app.downloader import find_ffmpeg
@@ -24,6 +25,8 @@ def self_check(output):
         library = files('yt_dlp_ejs').joinpath('yt', 'solver', 'lib.min.js')
         if not solver.is_file() or not library.is_file():
             raise RuntimeError('Missing bundled yt-dlp EJS solver files')
+        with sqlite3.connect(':memory:') as database:
+            sqlite_version = database.execute('select sqlite_version()').fetchone()[0]
         # Tcl initialization checks packaged Tcl data without requiring a display.
         tcl = tkinter.Tcl()
         if sys.platform == 'win32' or os.environ.get('DISPLAY'):
@@ -35,7 +38,7 @@ def self_check(output):
                 root.destroy()
         result = {'ok': True, 'yt_dlp': yt_dlp.version.__version__,
                   'deno': version.splitlines()[0], 'ffmpeg': ffmpeg_version.splitlines()[0], 'tcl': tcl.eval('info patchlevel'),
-                  'frozen': bool(getattr(sys, 'frozen', False))}
+                  'sqlite': sqlite_version, 'frozen': bool(getattr(sys, 'frozen', False))}
         code = 0
     except Exception as exc:
         result, code = {'ok': False, 'error': str(exc)}, 1

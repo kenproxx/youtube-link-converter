@@ -82,8 +82,8 @@ def select_format(info, quality=None):
         raise ValueError('Mức chất lượng không hợp lệ.')
     if info.get('is_live') or info.get('live_status') == 'is_live':
         raise ValueError('Video đang phát trực tiếp; hãy thử lại sau khi phát xong.')
-    if _requires_auth(info.get('http_headers')) or _unsupported_headers(info.get('http_headers')):
-        raise ValueError('Link cần xác thực hoặc header riêng không thể chuyển trực tiếp sang IDM.')
+    if info.get('cookies') or _requires_auth(info.get('http_headers')) or _unsupported_headers(info.get('http_headers')):
+        raise ValueError('Link cần xác thực hoặc header riêng không thể chuyển trực tiếp sang IDM. Hãy dùng Tải MP4 đủ tiếng.')
     candidates = []
     combined_levels, separate_levels = set(), set()
     for f in info.get('formats') or []:
@@ -99,7 +99,7 @@ def select_format(info, quality=None):
                 or f.get('acodec') in (None, '')
                 or f.get('has_drm') or f.get('manifest_url') or f.get('fragments')
                 or p.path.lower().endswith(('.m3u8', '.mpd'))
-                or _requires_auth(f.get('http_headers')) or _unsupported_headers(f.get('http_headers'))):
+                or f.get('cookies') or _requires_auth(f.get('http_headers')) or _unsupported_headers(f.get('http_headers'))):
             continue
         level = video_quality(f.get('width'), f.get('height'))
         if f.get('acodec') == 'none':
@@ -116,6 +116,8 @@ def select_format(info, quality=None):
         available = ', '.join(f'{q}p' for q in sorted(combined_levels)) or 'không có'
         message = f'Không có link một file chứa cả hình và tiếng {wanted}. Không lấy link chất lượng khác. '
         message += f'Chất lượng một file yt-dlp tìm thấy: {available}.'
+        if any(f.get('cookies') or _requires_auth(f.get('http_headers')) for f in info.get('formats') or []):
+            message += ' Có định dạng cần cookie/xác thực; hãy dùng Tải MP4 đủ tiếng để tải bằng phiên đã chọn.'
         if quality in separate_levels or (quality is None and separate_levels):
             levels = [quality] if quality is not None else sorted(separate_levels)
             message += (' Có luồng hình riêng ' + ', '.join(f'{q}p' for q in levels)

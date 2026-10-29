@@ -39,6 +39,14 @@ class UrlTests(unittest.TestCase):
 
 
 class FormatTests(unittest.TestCase):
+    def test_cookie_bound_media_cannot_be_exported_to_idm(self):
+        for info in ({'formats': [media('bound', 360, cookies='SESSION=private-secret')]},
+                     {'cookies': 'SESSION=private-secret', 'formats': [media('bound', 360)]}):
+            with self.subTest(info=info), self.assertRaises(ValueError) as caught:
+                select_format(info, 360)
+            self.assertNotIn('private-secret', str(caught.exception))
+            self.assertIn('Tải MP4 đủ tiếng', str(caught.exception))
+
     def test_exact_quality_and_best_rank_resolution_before_container(self):
         formats = [media('360', 360), media('720', 720), media('1080', 1080)]
         self.assertEqual(select_format({'formats': formats}, 720)['format_id'], '720')

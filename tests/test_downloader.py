@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import threading
+import shutil
 import unittest
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -64,6 +65,14 @@ class DownloadIntegrationTests(unittest.TestCase):
                             '-t', '1', *codec, str(cls.root / name)], check=True, **flags)
         class Handler(SimpleHTTPRequestHandler):
             def log_message(self, *args): pass
+            def do_GET(self):
+                if self.path.startswith('/protected/') and self.headers.get('Cookie') != 'SESSION=fixture-secret':
+                    self.send_error(401)
+                    return
+                super().do_GET()
+        (cls.root / 'protected').mkdir()
+        for name in ('video.mp4', 'audio.m4a'):
+            shutil.copyfile(cls.root / name, cls.root / 'protected' / name)
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(cls.root)))
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -101,6 +110,31 @@ class DownloadIntegrationTests(unittest.TestCase):
             self.assertEqual(inspect_media(result.local_path, self.ffmpeg), (1920, 1080))
             self.assertTrue(any('Ghép' in msg for msg in messages))
             self.assertFalse(any(p.name.startswith('.yt-converter-') for p in Path(tmp).iterdir()))
+
+    def test_both_media_streams_use_the_same_authenticated_session(self):
+        from app.auth import CookieSource
+        from yt_dlp import YoutubeDL
+        from http.cookiejar import Cookie
+        info = self.info()
+        for f in info['formats']:
+            f['url'] = f['url'].replace(self.base, self.base + 'protected/')
+        class SessionMetadataYDL(YoutubeDL):
+            def extract_info(inner, *args, **kwargs):
+                if inner.cookiejar.get_cookie_header('https://www.youtube.com/') != 'SESSION=fixture-secret':
+                    raise AssertionError('Cookie file was not used for metadata')
+                # Simulate metadata setting a media-host cookie, scoped to our local server.
+                inner.cookiejar.set_cookie(Cookie(0, 'SESSION', 'fixture-secret', None, False,
+                    '127.0.0.1', False, False, '/', True, False, None, True, None, None, {}))
+                return info
+        with tempfile.TemporaryDirectory() as tmp, patch('app.downloader.find_deno', return_value=Path('/unused')):
+            cookie_file = Path(tmp) / 'cookies.txt'
+            original = '# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tFALSE\t0\tSESSION\tfixture-secret\n'
+            cookie_file.write_text(original)
+            result = download_video('https://www.youtube.com/watch?v=abcdefghijk', 1080, tmp,
+                ydl_factory=SessionMetadataYDL, auth=CookieSource(file=cookie_file))
+            self.assertEqual(inspect_media(result.local_path, self.ffmpeg), (1920, 1080))
+            self.assertEqual(cookie_file.read_text(), original)
+            self.assertNotIn('fixture-secret', repr(result))
 
     def test_failure_does_not_publish_or_leave_partial_files(self):
         with tempfile.TemporaryDirectory() as tmp, patch('app.downloader.find_deno', return_value=Path('/unused/deno')):

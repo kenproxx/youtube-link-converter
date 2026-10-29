@@ -11,6 +11,63 @@ from app.ui import ConverterApp
 
 @unittest.skipUnless(os.environ.get('DISPLAY'), 'GUI smoke test requires a display')
 class GuiTests(unittest.TestCase):
+    def test_cookie_file_selection_reaches_both_actions_and_is_locked_while_busy(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / 'cookies.txt'
+                path.write_text('# Netscape HTTP Cookie File\n')
+                seen = []
+                def convert(url, quality, *, auth):
+                    seen.append((auth.file, auth.browser))
+                    return ConversionResult(url, 'Title', 'Title.mp4', 'https://media.test/a', 360)
+                def download(url, quality, folder, *, progress, auth):
+                    seen.append((auth.file, auth.browser))
+                    return ConversionResult(url, 'Title', 'Title.mp4', height=360,
+                                            local_path=str(Path(folder) / 'Title.mp4'))
+                app = ConverterApp(root, converter=convert, downloader=download)
+                app.input.insert('1.0', 'https://youtu.be/abcdefghijk')
+                self.assertEqual(app.cookie_mode.get(), 'Không dùng cookie')
+                app.cookie_mode.set('File cookies.txt')
+                app.update_auth_controls()
+                with patch('app.ui.filedialog.askopenfilename', return_value=str(path)):
+                    app.pick_cookies()
+                for download_mode in (False, True):
+                    with patch('app.ui.filedialog.askdirectory', return_value=tmp):
+                        app.start_conversion(download=download_mode)
+                    self.assertEqual(str(app.auth_box['state']), 'disabled')
+                    self.assertEqual(str(app.cookie_picker['state']), 'disabled')
+                    deadline = time.monotonic() + 5
+                    while app.busy and time.monotonic() < deadline:
+                        root.update(); time.sleep(.01)
+                    self.assertFalse(app.busy)
+                    self.assertIsNone(app.results[0].error)
+                    self.assertEqual(str(app.auth_box['state']), 'readonly')
+                self.assertEqual(seen, [(str(path), None), (str(path), None)])
+        finally:
+            root.destroy()
+
+    def test_browser_profile_is_forwarded_and_bot_recovery_is_visible(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            def blocked(url, quality, *, auth):
+                self.assertEqual((auth.browser, auth.profile), ('firefox', 'Work'))
+                raise ValueError('Xác thực YouTube: chọn cookie rồi chạy lại.')
+            app = ConverterApp(root, converter=blocked)
+            app.cookie_mode.set('Firefox')
+            app.browser_profile.set('Work')
+            app.input.insert('1.0', 'https://youtu.be/abcdefghijk')
+            app.start_conversion()
+            deadline = time.monotonic() + 5
+            while app.busy and time.monotonic() < deadline:
+                root.update(); time.sleep(.01)
+            self.assertEqual(app.table.selection(), ('0',))
+            self.assertIn('Xác thực YouTube', app.details.get('1.0', 'end'))
+        finally:
+            root.destroy()
+
     def test_batch_updates_table_and_preserves_failures(self):
         root = tk.Tk()
         root.withdraw()
