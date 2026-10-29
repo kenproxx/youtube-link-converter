@@ -39,7 +39,7 @@ class UrlTests(unittest.TestCase):
 
 
 class FormatTests(unittest.TestCase):
-    def test_cap_and_best_rank_resolution_before_container(self):
+    def test_exact_quality_and_best_rank_resolution_before_container(self):
         formats = [media('360', 360), media('720', 720), media('1080', 1080)]
         self.assertEqual(select_format({'formats': formats}, 720)['format_id'], '720')
         self.assertEqual(select_format({'formats': formats}, None)['format_id'], '1080')
@@ -51,9 +51,8 @@ class FormatTests(unittest.TestCase):
         formats[0]['ext'] = 'webm'
         self.assertEqual(select_format({'formats': formats}, 720)['format_id'], 'mp4')
 
-    def test_lower_quality_is_allowed_but_higher_or_unknown_is_not(self):
-        self.assertEqual(select_format({'formats': [media('360', 360)]}, 480)['height'], 360)
-        for f in [media('720', 720), media('unknown', None)]:
+    def test_lower_higher_and_unknown_quality_are_all_rejected(self):
+        for f in [media('360', 360), media('720', 720), media('unknown', None)]:
             with self.assertRaises(ValueError):
                 select_format({'formats': [f]}, 480)
 
@@ -79,7 +78,7 @@ class FormatTests(unittest.TestCase):
     def test_accepts_raw_youtube_progressive_format_without_protocol(self):
         f = media('18', 360)
         del f['protocol']
-        self.assertEqual(select_format({'formats': [f]}, 720)['format_id'], '18')
+        self.assertEqual(select_format({'formats': [f]}, 360)['format_id'], '18')
 
     def test_rejects_custom_headers_that_idm_cannot_forward(self):
         f = media('360', 360, http_headers={'X-Custom-Token': 'needed'})
@@ -89,6 +88,25 @@ class FormatTests(unittest.TestCase):
     def test_rejects_active_live_stream(self):
         with self.assertRaises(ValueError):
             select_format({'is_live': True, 'formats': [media('360', 360)]}, None)
+
+    def test_1080_never_falls_back_to_360_even_with_only_silent_1080(self):
+        silent = media('137', 1080)
+        silent['acodec'] = 'none'
+        with self.assertRaises(ValueError) as raised:
+            select_format({'formats': [media('18', 360), silent]}, 1080)
+        self.assertIn('1080p', str(raised.exception))
+        self.assertIn('360p', str(raised.exception))
+        self.assertIn('ghép', str(raised.exception))
+
+    def test_portrait_1080_uses_the_shorter_dimension(self):
+        portrait = media('portrait', 1920, width=1080)
+        self.assertEqual(select_format({'formats': [portrait]}, 1080)['format_id'], 'portrait')
+        with self.assertRaises(ValueError):
+            select_format({'formats': [media('low', 640, width=360)]}, 1080)
+
+    def test_best_compares_landscape_and_portrait_fairly(self):
+        formats = [media('portrait', 1920, width=1080), media('landscape', 1440, width=2560)]
+        self.assertEqual(select_format({'formats': formats}, None)['format_id'], 'landscape')
 
     def test_invalid_quality_rejected(self):
         with self.assertRaises(ValueError):
@@ -125,10 +143,23 @@ class BatchTests(unittest.TestCase):
         def convert(url, quality):
             if url == 'bad':
                 raise ValueError('Không có định dạng phù hợp')
-            return ConversionResult(url, 'Tên bài', 'song.mp4', 'https://x.test/a', 360)
+            return ConversionResult(url, 'Tên bài', 'song.mp4', 'https://x.test/a', 720)
         events = list(run_batch(['ok', 'bad', 'ok2'], 720, Event(), convert))
         self.assertEqual([e.error is None for e in events], [True, False, True])
         self.assertEqual([events[0].filename, events[2].filename], ['song.mp4', 'song (2).mp4'])
+
+    def test_batch_rejects_converter_results_with_wrong_or_unknown_quality(self):
+        for height in (360, 720, 1440, None):
+            with self.subTest(height=height):
+                def convert(url, quality):
+                    return ConversionResult(url, 'x', 'x.mp4', 'https://x.test/a', height)
+                result = list(run_batch(['a'], 1080, Event(), convert))[0]
+                self.assertIsNotNone(result.error)
+                self.assertFalse(result.url)
+                with tempfile.TemporaryDirectory() as tmp:
+                    output = Path(tmp) / 'links.txt'
+                    export_txt(output, [result])
+                    self.assertEqual(output.read_text(), '')
 
     def test_cancel_stops_before_next_video(self):
         cancel = Event()

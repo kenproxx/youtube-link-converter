@@ -59,4 +59,5 @@ def convert_video(url, quality=None, ydl_factory=None):
                 headers[key.lower()] = value
     return ConversionResult(url, title, safe_filename(title, f.get('ext')), f['url'],
                             f.get('height'), requested_quality=quality,
-                            headers={'User-Agent': headers['user-agent'], 'Referer': headers['referer']})
+                            headers={'User-Agent': headers['user-agent'], 'Referer': headers['referer']},
+                            width=f.get('width'))

@@ -36,6 +36,7 @@ echo [5/6] Building standalone YouTubeLinkConverter.exe...
   --collect-all Cryptodome ^
   --collect-all brotli ^
   --collect-all mutagen ^
+  --collect-all imageio_ffmpeg ^
   --add-binary "tools\deno.exe;tools" ^
   main.py
 if errorlevel 1 goto :error
@@ -48,7 +49,7 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 
 echo DONE: dist\YouTubeLinkConverter.exe
-echo Python, Tk, yt-dlp, EJS and Deno are bundled. No runtime install is needed.
+echo Python, Tk, yt-dlp, EJS, Deno and FFmpeg are bundled. No runtime install is needed.
 if /I not "%~1"=="--ci" pause
 exit /b 0
 

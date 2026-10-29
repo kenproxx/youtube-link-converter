@@ -40,7 +40,7 @@ class ExtractorTests(unittest.TestCase):
                     raise AssertionError('Must request metadata only')
                 return info
         with patch('app.extractor.find_deno', return_value=Path('/tools/deno')):
-            result = convert_video('https://www.youtube.com/watch?v=abcdefghijk', 720, FakeYDL)
+            result = convert_video('https://www.youtube.com/watch?v=abcdefghijk', 360, FakeYDL)
         self.assertEqual(result.title, 'Bài hát')
         self.assertEqual(result.filename, 'Bài hát.mp4')
         self.assertEqual(result.height, 360)
@@ -57,3 +57,17 @@ class ExtractorTests(unittest.TestCase):
         with patch('app.extractor.find_deno', return_value=Path('/tools/deno')):
             with self.assertRaises(ValueError):
                 convert_video('https://youtube.com/watch?v=abcdefghijk', None, FakeYDL)
+
+    def test_portrait_1080_keeps_real_dimensions_and_normalized_quality(self):
+        class FakeYDL:
+            def __init__(self, opts): pass
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def extract_info(self, *a, **kw):
+                return {'title': 'Portrait', 'formats': [dict(format_id='portrait', ext='mp4',
+                    width=1080, height=1920, acodec='mp4a', vcodec='avc1',
+                    protocol='https', url='https://media.example/portrait')]}
+        with patch('app.extractor.find_deno', return_value=Path('/tools/deno')):
+            result = convert_video('https://youtube.com/watch?v=abcdefghijk', 1080, FakeYDL)
+        self.assertEqual(result.quality, 1080)
+        self.assertEqual((result.width, result.height), (1080, 1920))

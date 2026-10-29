@@ -9,34 +9,40 @@ from tkinter.scrolledtext import ScrolledText
 from .core import QUALITY_OPTIONS, export_txt, parse_urls, run_batch
 from .extractor import convert_video
 from .idm import enqueue, find_idm
+from .downloader import download_video
 
 
 class ConverterApp:
-    def __init__(self, root, converter=convert_video):
-        self.root, self.converter = root, converter
+    def __init__(self, root, converter=convert_video, downloader=download_video):
+        self.root, self.converter, self.downloader = root, converter, downloader
+        self.close_pending, self.mode = False, 'links'
+        self.poll_after = None
+        self.root.bind('<Destroy>', self._on_destroy, add='+')
         self.results, self.events = [], Queue()
         self.cancel, self.busy = Event(), False
         self.root.title('YouTube Link Converter — IDM')
         self.root.geometry('1080x760')
-        self.root.minsize(820, 620)
+        self.root.minsize(980, 650)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
         main = ttk.Frame(root, padding=16)
         main.pack(fill='both', expand=True)
         ttk.Label(main, text='YouTube → IDM', font=('Segoe UI', 20, 'bold')).pack(anchor='w')
-        ttk.Label(main, text='Dán mỗi dòng một link video YouTube. Chỉ lấy file có cả hình và tiếng.').pack(anchor='w', pady=(4, 8))
+        ttk.Label(main, text='Dán mỗi dòng một video. Lấy link IDM hoặc tải/ghép MP4 có đủ hình và tiếng, đúng chất lượng.').pack(anchor='w', pady=(4, 8))
         self.input = ScrolledText(main, height=7, wrap='word', font=('Segoe UI', 10))
         self.input.pack(fill='x')
         controls = ttk.Frame(main)
         controls.pack(fill='x', pady=10)
         self.import_button = ttk.Button(controls, text='Nhập TXT', command=self.import_txt)
         self.import_button.pack(side='left')
-        ttk.Label(controls, text='Chất lượng tối đa:').pack(side='left', padx=(18, 6))
+        ttk.Label(controls, text='Chất lượng yêu cầu:').pack(side='left', padx=(18, 6))
         self.quality = tk.StringVar(value='Tốt nhất có thể')
         self.quality_box = ttk.Combobox(controls, textvariable=self.quality, values=list(QUALITY_OPTIONS), state='readonly', width=18)
         self.quality_box.pack(side='left')
-        self.convert_button = ttk.Button(controls, text='Chuyển đổi', command=self.start_conversion)
-        self.convert_button.pack(side='left', padx=10)
-        self.cancel_button = ttk.Button(controls, text='Dừng sau video hiện tại', command=self.request_cancel, state='disabled')
+        self.convert_button = ttk.Button(controls, text='Lấy link IDM', command=self.start_conversion)
+        self.convert_button.pack(side='left', padx=8)
+        self.download_button = ttk.Button(controls, text='Tải MP4 đủ tiếng', command=lambda: self.start_conversion(download=True))
+        self.download_button.pack(side='left', padx=(0, 8))
+        self.cancel_button = ttk.Button(controls, text='Dừng sau video', command=self.request_cancel, state='disabled')
         self.cancel_button.pack(side='left')
         self.progress = ttk.Progressbar(main, mode='determinate')
         self.progress.pack(fill='x', pady=(0, 8))
@@ -44,7 +50,7 @@ class ConverterApp:
         frame.pack(fill='both', expand=True)
         cols = ('title', 'quality', 'filename', 'status')
         self.table = ttk.Treeview(frame, columns=cols, show='headings', selectmode='extended')
-        for col, label, width in zip(cols, ('Tên video', 'Chất lượng', 'Tên file', 'Trạng thái'), (230, 90, 240, 240)):
+        for col, label, width in zip(cols, ('Tên video', 'Chất lượng', 'Tên file', 'Trạng thái'), (230, 160, 240, 240)):
             self.table.heading(col, text=label)
             self.table.column(col, width=width, minwidth=70)
         scroll = ttk.Scrollbar(frame, orient='vertical', command=self.table.yview)
@@ -75,22 +81,22 @@ class ConverterApp:
         self.idm_picker = ttk.Button(idm_row, text='Chọn IDMan.exe', command=self.pick_idm)
         self.idm_picker.pack(side='left')
         self.status = tk.StringVar(value='Sẵn sàng.')
-        ttk.Label(main, textvariable=self.status).pack(anchor='w')
-        ttk.Label(main, text='Link có thời hạn và có thể phụ thuộc IP/header. TXT không bảo đảm tên file; dùng nút IDM để truyền tên video.',
+        ttk.Label(main, textvariable=self.status, wraplength=1000).pack(anchor='w')
+        ttk.Label(main, text='1080p thường tách hình/tiếng: dùng Tải MP4 đủ tiếng. TXT/IDM chỉ dùng link có sẵn cả hình và tiếng.',
                   wraplength=1000, foreground='#645a40').pack(anchor='w', pady=(6, 0))
-        self.root.after(80, self.poll)
+        self.poll_after = self.root.after(80, self.poll)
 
     def set_busy(self, busy, converting=False):
         self.busy = busy
         state = 'disabled' if busy else 'normal'
-        for w in (self.convert_button, self.import_button, self.input, self.idm_entry, self.idm_picker):
+        for w in (self.convert_button, self.download_button, self.import_button, self.input, self.idm_entry, self.idm_picker):
             w.configure(state=state)
         self.quality_box.configure(state='disabled' if busy else 'readonly')
         self.cancel_button.configure(state='normal' if converting else 'disabled')
         for b in self.result_buttons:
-            b.configure(state='normal' if not busy and any(not r.error for r in self.results) else 'disabled')
+            b.configure(state='normal' if not busy and any(not r.error and r.url for r in self.results) else 'disabled')
 
-    def start_conversion(self):
+    def start_conversion(self, download=False):
         if self.busy:
             return
         urls, errors = parse_urls(self.input.get('1.0', 'end'))
@@ -99,16 +105,30 @@ class ConverterApp:
             return
         if errors:
             messagebox.showwarning('Bỏ qua dòng không hợp lệ', '\n'.join(errors[:12]), parent=self.root)
+        folder = None
+        if download:
+            folder = filedialog.askdirectory(title='Chọn thư mục lưu MP4', parent=self.root)
+            if not folder:
+                return
+        self.mode = 'download' if download else 'links'
         self.results.clear()
         self.table.delete(*self.table.get_children())
         self.cancel.clear()
         self.progress.configure(maximum=len(urls), value=0)
         quality = QUALITY_OPTIONS[self.quality.get()]
         self.set_busy(True, converting=True)
-        self.status.set(f'Đang xử lý {len(urls)} video — tối đa {self.quality.get()}...')
+        self.status.set(f'Đang xử lý {len(urls)} video — yêu cầu {self.quality.get()}...')
         def work():
+            index = [0]
+            def convert(url, q):
+                if not download:
+                    return self.converter(url, q)
+                index[0] += 1
+                def progress(message):
+                    self.events.put(('download_progress', f'Video {index[0]}/{len(urls)}: {message}'))
+                return self.downloader(url, q, folder, progress=progress)
             try:
-                for r in run_batch(urls, quality, self.cancel, self.converter):
+                for r in run_batch(urls, quality, self.cancel, convert):
                     self.events.put(('result', r))
             finally:
                 self.events.put(('done', self.cancel.is_set()))
@@ -120,23 +140,33 @@ class ConverterApp:
         self.status.set('Sẽ dừng sau khi video hiện tại hoàn tất (các yêu cầu mạng có timeout).')
 
     def poll(self):
+        self.poll_after = None
         try:
             while True:
                 kind, value = self.events.get_nowait()
                 if kind == 'result':
                     i = len(self.results)
                     self.results.append(value)
-                    status = 'Lỗi — chọn dòng để xem' if value.error else 'Thành công'
-                    if not value.error and value.requested_quality and value.height and value.height < value.requested_quality:
-                        status += ' — thấp hơn mức đã chọn'
+                    status = 'Lỗi — chọn dòng để xem' if value.error else ('Đã lưu MP4' if value.local_path else 'Thành công')
+                    if not value.error and value.requested_quality:
+                        status += ' — đúng chất lượng đã chọn'
+                    resolution = f'{value.quality}p' if value.quality else '—'
+                    if value.width and value.height:
+                        resolution += f' ({value.width}×{value.height})'
                     self.table.insert('', 'end', iid=str(i), values=(value.title or value.source,
-                        f'{value.height}p' if value.height else '—', value.filename, status))
+                        resolution, value.filename, status))
+                    if value.local_path:
+                        self.table.selection_set(str(i))
+                        self.show_details()
                     self.progress.configure(value=len(self.results))
                     self.status.set(f'Đã xử lý {len(self.results)} video...')
                 elif kind == 'done':
                     self.set_busy(False)
                     ok = sum(not r.error for r in self.results)
-                    self.status.set(f'{"Đã dừng" if value else "Hoàn tất"}: {ok} thành công, {len(self.results) - ok} lỗi.')
+                    unit = 'file MP4 đã lưu' if self.mode == 'download' else 'link thành công'
+                    self.status.set(f'{"Đã dừng" if value else "Hoàn tất"}: {ok} {unit}, {len(self.results) - ok} lỗi.')
+                elif kind == 'download_progress':
+                    self.status.set(value)
                 elif kind == 'idm_done':
                     self.set_busy(False)
                     count, error = value
@@ -145,7 +175,10 @@ class ConverterApp:
                         messagebox.showerror('IDM', f'Đã thêm {count} video. Dừng vì lỗi: {error}', parent=self.root)
         except Empty:
             pass
-        self.root.after(80, self.poll)
+        if self.close_pending and not self.busy:
+            self.root.destroy()
+            return
+        self.poll_after = self.root.after(80, self.poll)
 
     def chosen_results(self):
         selected = self.table.selection()
@@ -157,7 +190,7 @@ class ConverterApp:
         text = ''
         if selected:
             r = self.results[int(selected[0])]
-            text = f'{r.source}\n{r.error or r.url}'
+            text = f'{r.source}\n{r.error or r.local_path or r.url}'
             if not r.error and r.headers:
                 text += '\nHeader có thể cần cấu hình trong IDM:\n' + '\n'.join(f'{k}: {v}' for k, v in r.headers.items())
         self.details.configure(state='normal')
@@ -208,12 +241,15 @@ class ConverterApp:
         if not Path(exe).is_file():
             messagebox.showwarning('Chưa tìm thấy IDM', 'Hãy chọn IDMan.exe bằng nút bên cạnh.', parent=self.root)
             return
+        self.cancel.clear()
         self.set_busy(True)
         self.status.set('Đang thêm link vào hàng đợi IDM...')
         def work():
             count, error = 0, None
             try:
                 for r in results:
+                    if self.cancel.is_set():
+                        break
                     enqueue(exe, r)
                     count += 1
             except Exception as exc:
@@ -221,8 +257,20 @@ class ConverterApp:
             self.events.put(('idm_done', (count, error)))
         Thread(target=work, daemon=True).start()
 
+    def _on_destroy(self, event):
+        if event.widget is self.root and self.poll_after is not None:
+            try:
+                self.root.after_cancel(self.poll_after)
+            except tk.TclError:
+                pass
+            self.poll_after = None
+
     def close(self):
-        if self.busy and not messagebox.askyesno('Thoát', 'Tác vụ đang chạy. Thoát ứng dụng?', parent=self.root):
+        if self.busy:
+            if not messagebox.askyesno('Thoát', 'Dừng sau video/tác vụ hiện tại rồi tự đóng ứng dụng?', parent=self.root):
+                return
+            self.close_pending = True
+            self.request_cancel()
             return
         self.cancel.set()
         self.root.destroy()

@@ -1,19 +1,20 @@
 # YouTube Link Converter — IDM
 
-Ứng dụng Windows chuyển danh sách link video YouTube thành link tải trực tiếp bằng **yt-dlp**. Giao diện tiếng Việt, có chọn chất lượng, tên file theo tên video, xuất TXT và thêm vào hàng đợi IDM.
+Ứng dụng Windows chuyển danh sách link video YouTube thành link tải trực tiếp bằng **yt-dlp**. Giao diện tiếng Việt, chọn đúng chất lượng, tên file theo tên video, xuất TXT/thêm link vào IDM, hoặc tự tải và ghép hình/tiếng thành MP4.
 
 ## Sử dụng
 
 1. Mở `YouTubeLinkConverter.exe` trên Windows 10/11 x64.
 2. Dán mỗi dòng một link video, hoặc chọn **Nhập TXT** (UTF-8).
-3. Chọn **Tốt nhất có thể / 360p / 480p / 720p / 1080p**, rồi **Chuyển đổi**.
-4. Xem tên video, chất lượng thực tế, tên file và trạng thái. Chọn dòng để xem lỗi hoặc link.
-5. Chọn các dòng cần dùng, hoặc bỏ chọn tất cả để thao tác với mọi kết quả thành công:
+3. Chọn **Tốt nhất có thể / 360p / 480p / 720p / 1080p**.
+4. Để tải 1080p đủ tiếng, bấm **Tải MP4 đủ tiếng**, chọn thư mục lưu. App lấy đúng video, tải thêm âm thanh nếu bị tách luồng, rồi tự ghép MP4. Xem tiến độ tải từng luồng/ghép file; chọn dòng kết quả để xem đường dẫn đã lưu.
+5. Để chỉ lấy URL cho IDM/TXT, bấm **Lấy link IDM**. Chế độ này chỉ nhận một URL đã có sẵn cả hình và tiếng, nên có thể không có 1080p. Xem bảng kết quả/lỗi để biết các mức tìm thấy.
+6. Với kết quả URL, chọn các dòng cần dùng, hoặc bỏ chọn tất cả để thao tác với mọi kết quả thành công:
    - **Sao chép link**.
    - **Xuất TXT**: **mỗi URL một dòng, phân cách bằng dấu xuống dòng**, không thêm tiêu đề, tên file hay dòng lỗi; UTF-8.
    - **Thêm vào IDM**: chọn `IDMan.exe` nếu chưa tự nhận diện. App truyền URL và tên video qua `/d`, `/f`, `/a`. Mở IDM để chạy hàng đợi; app không tự bắt đầu tải.
 
-Chất lượng là mức trần: chọn 720p có thể nhận 360p nếu không có bản 720p phù hợp. Bảng kết quả báo rõ khi dùng mức thấp hơn. Đổi lựa chọn chất lượng cần chuyển đổi lại để tạo link mới. Chỉ nhận video đơn lẻ; không tự mở rộng playlist, link trùng ID được bỏ qua. Nút dừng có tác dụng sau video hiện tại.
+Chọn chất lượng là yêu cầu **đúng mức đó**: chọn 1080p thì chỉ nhận 1080p, không lấy 720p, 360p hoặc mức cao hơn. Không có định dạng đạt yêu cầu thì báo lỗi và không cho xuất TXT/sao chép/gửi IDM với link sai chất lượng. **Tốt nhất có thể** chọn mức cao nhất trong các định dạng phù hợp với chế độ đang dùng. Với tải MP4, bao gồm cả video/âm thanh riêng; với link IDM, chỉ gồm định dạng một URL có đủ hình/tiếng. Với video dọc, chất lượng tính theo cạnh ngắn theo quy ước `res` của yt-dlp: `360×640` = 360p, `1080×1920` = 1080p. Bảng hiển thị cả mức chất lượng và kích thước gốc khi biết đầy đủ. Đổi lựa chọn chất lượng cần chuyển đổi lại để tạo link mới. Chỉ nhận video đơn lẻ; không tự mở rộng playlist, link trùng ID được bỏ qua. Nút dừng có tác dụng sau video hiện tại.
 
 ## File EXE độc lập, đóng gói như facebook-scheduler
 
@@ -23,7 +24,7 @@ Dùng `build.bat` + PyInstaller `--onefile --windowed`, giống quy trình của
 dist\YouTubeLinkConverter.exe
 ```
 
-File EXE kèm Python, Tcl/Tk, yt-dlp và các thư viện mặc định (gồm EJS), chứng chỉ CA và **Deno 2.5.6**. Deno được tải từ release chính thức, đối chiếu SHA-256 công bố trước khi nhúng vào EXE. Không tải runtime hay mã giải thử thách từ xa khi app chạy. Người dùng không phải cài Python, pip, thư viện hay Deno. Không cần FFmpeg vì ứng dụng chỉ chọn file đã có cả hình và tiếng, không ghép luồng. IDM là phần mềm riêng cần có nếu dùng nút gửi sang IDM.
+File EXE kèm Python, Tcl/Tk, yt-dlp và các thư viện mặc định (gồm EJS), chứng chỉ CA, **Deno 2.5.6** và FFmpeg từ wheel `imageio-ffmpeg==0.7.0`. Deno được tải từ release chính thức, đối chiếu SHA-256 công bố trước khi nhúng vào EXE. Không tải runtime hay mã giải thử thách từ xa khi app chạy. Người dùng không phải cài Python, pip, thư viện hay Deno. FFmpeg đã được nhúng để tự ghép MP4; không cần người dùng cài FFmpeg hoặc thêm PATH. Bước kiểm tra từ EXE cũng chạy FFmpeg để phát hiện thiếu binary đóng gói. IDM là phần mềm riêng cần có nếu dùng nút gửi sang IDM.
 
 **Máy build** cần Windows 10/11 x64, PowerShell 5.1 trở lên, mạng tới python.org/PyPI/GitHub và chạy:
 
@@ -43,11 +44,19 @@ Có sẵn workflow **Build Windows EXE** trong `.github/workflows/build-windows.
 
 ## Giới hạn cần biết
 
-- Chỉ xuất link **một file có cả hình và tiếng**. YouTube thường chỉ cung cấp hình/tiếng riêng ở chất lượng cao; chọn 1080p không bảo đảm có link 1080p. Video không có định dạng phù hợp sẽ báo lỗi, không thay bằng link thiếu tiếng.
+- Chế độ **Lấy link IDM** chỉ xuất link **một file có cả hình và tiếng**. YouTube thường chỉ cung cấp hình/tiếng riêng ở chất lượng cao; chọn 1080p không bảo đảm có link 1080p. Video không có định dạng đúng chất lượng sẽ báo lỗi, không thay bằng link thiếu tiếng hoặc tự hạ độ phân giải. Lỗi liệt kê mức có sẵn cho link một file và báo rõ nếu có hình đúng chất lượng nhưng âm thanh tách riêng.
 - Link trực tiếp có thời hạn, có thể phụ thuộc IP/header; nên chạy ứng dụng trên cùng máy/mạng với IDM và tải sớm. Không bảo đảm mọi video đều tải được bằng IDM. Link yêu cầu Cookie/Authorization đã biết sẽ bị loại, nhưng các ràng buộc khác của YouTube vẫn có thể làm IDM từ chối.
 - TXT chỉ chứa URL nên không bảo đảm IDM tự nhận đúng tên video. **Dùng nút Thêm vào IDM để truyền tên file theo video.** Các ký tự không hợp lệ trên Windows được thay thế, giữ Unicode và tránh trùng tên trong một lần chuyển đổi. Nếu YouTube yêu cầu header, chọn dòng kết quả và xem User-Agent/Referer trong phần chi tiết để cấu hình tương ứng trong IDM. Các header tùy chỉnh khác mà tích hợp IDM không truyền được sẽ bị từ chối.
-- Chưa hỗ trợ cookie, video cần đăng nhập, playlist, livestream đang phát, ghép video/audio hoặc tải nội dung bằng app.
+- Chưa hỗ trợ cookie, video cần đăng nhập, DRM, playlist hoặc livestream đang phát. Nút dừng dừng sau video hiện tại; nếu đóng trong lúc xử lý, app đợi tác vụ hiện tại kết thúc rồi đóng để không bỏ lại tiến trình ghép file.
 - YouTube thay đổi thường xuyên; cập nhật bản yt-dlp/Deno và build lại khi cần. Bản EXE không tự cập nhật thư viện.
+
+## Vì sao thường chỉ lấy được 360p và cách có 1080p đủ tiếng
+
+Nếu dữ liệu yt-dlp nhận được có link 360p chứa cả hình và tiếng nhưng 1080p chỉ là luồng hình riêng, chế độ chuyển đổi sang **một URL** không thể biến hai luồng thành một file đã ghép trên máy chủ YouTube. Đổi client/định dạng không bảo đảm một URL 1080p có sẵn tiếng. Không nâng 360p lên 1080p hoặc ghi nhãn sai độ phân giải.
+
+Nút **Tải MP4 đủ tiếng** xử lý trường hợp này: chọn đúng độ phân giải, ưu tiên hình AVC/MP4 và âm thanh AAC, tải cả hai rồi ghép bằng FFmpeg. Video được giữ nguyên bitstream, không scale/nâng độ phân giải; âm thanh chỉ được chuyển sang AAC khi cần để dùng trong MP4. File đầu ra được kiểm tra đủ hình/tiếng và đúng độ phân giải trước khi lưu dưới tên video. Link hết hạn hoặc thiếu đoạn HLS/DASH sẽ làm lượt tải thất bại; không chấp nhận bỏ đoạn để tạo MP4 thiếu nội dung. File cùng tên có sẵn được giữ nguyên, file mới thêm hậu tố `(2)`, `(3)`; file tạm được dọn khi thất bại. File đã tải không được xuất TXT/sao chép URL hay gửi sang IDM.
+
+Tham khảo: [yt-dlp format selection](https://github.com/yt-dlp/yt-dlp#format-selection), [format sorting và quy ước res](https://github.com/yt-dlp/yt-dlp#sorting-formats).
 
 ## Phát triển và kiểm thử
 
@@ -61,4 +70,4 @@ python3 -m venv .venv
 .venv/bin/python main.py --self-check /tmp/youtube-self-check.json
 ```
 
-Trên Windows, dùng `--target windows`. Test offline kiểm tra link đầu vào, lựa chọn chất lượng và bộ lọc định dạng, tên file Windows, lỗi từng video, hủy giữa các video, TXT và đối số IDM. Test giao diện cần màn hình: trên Linux đặt `DISPLAY` trỏ tới X server; trên Windows đặt `DISPLAY=windows` để bật smoke test. Test không tải video, không mở IDM và không cần truy cập YouTube. Việc tải thật qua IDM cần kiểm tra riêng trên Windows với video hiện có quyền truy cập.
+Trên Windows, dùng `--target windows`. Test offline kiểm tra link đầu vào, lựa chọn chất lượng và bộ lọc định dạng, tên file Windows, lỗi từng video, hủy giữa các video, TXT và đối số IDM. Test giao diện cần màn hình: trên Linux đặt `DISPLAY` trỏ tới X server; trên Windows đặt `DISPLAY=windows` để bật smoke test. Test không truy cập YouTube hoặc mở IDM: dữ liệu video/âm thanh mẫu được tạo cục bộ, tải qua HTTP localhost rồi ghép/kiểm tra bằng FFmpeg để kiểm chứng luồng thật. Việc tải thật qua IDM cần kiểm tra riêng trên Windows với video hiện có quyền truy cập.

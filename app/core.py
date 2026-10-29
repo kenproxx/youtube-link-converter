@@ -21,6 +21,12 @@ class ConversionResult:
     error: str | None = None
     requested_quality: int | None = None
     headers: dict = field(default_factory=dict)
+    width: int | None = None
+    local_path: str = ''
+
+    @property
+    def quality(self):
+        return video_quality(self.width, self.height)
 
 
 def parse_urls(text):
@@ -64,6 +70,13 @@ def _unsupported_headers(headers):
     return any(k.lower() not in standard and v for k, v in (headers or {}).items())
 
 
+def video_quality(width, height):
+    """Use yt-dlp's resolution convention: the smaller known video dimension."""
+    if not height or height <= 0:
+        return None
+    return min(width, height) if width and width > 0 else height
+
+
 def select_format(info, quality=None):
     if quality is not None and quality not in (360, 480, 720, 1080):
         raise ValueError('Mức chất lượng không hợp lệ.')
@@ -72,6 +85,7 @@ def select_format(info, quality=None):
     if _requires_auth(info.get('http_headers')) or _unsupported_headers(info.get('http_headers')):
         raise ValueError('Link cần xác thực hoặc header riêng không thể chuyển trực tiếp sang IDM.')
     candidates = []
+    combined_levels, separate_levels = set(), set()
     for f in info.get('formats') or []:
         url = f.get('url') or ''
         try:
@@ -82,19 +96,32 @@ def select_format(info, quality=None):
                 or p.username or p.password or '\n' in url or '\r' in url
                 or (f.get('protocol') or p.scheme) not in ('http', 'https')
                 or f.get('vcodec') in (None, '', 'none')
-                or f.get('acodec') in (None, '', 'none')
+                or f.get('acodec') in (None, '')
                 or f.get('has_drm') or f.get('manifest_url') or f.get('fragments')
                 or p.path.lower().endswith(('.m3u8', '.mpd'))
                 or _requires_auth(f.get('http_headers')) or _unsupported_headers(f.get('http_headers'))):
             continue
-        height = f.get('height')
-        if quality is not None and (not height or height > quality):
+        level = video_quality(f.get('width'), f.get('height'))
+        if f.get('acodec') == 'none':
+            if level:
+                separate_levels.add(level)
+            continue
+        if level:
+            combined_levels.add(level)
+        if quality is not None and level != quality:
             continue
         candidates.append(f)
     if not candidates:
-        raise ValueError('Không có link tải trực tiếp chứa cả hình và tiếng ở mức đã chọn. '
-                         'Thử Tốt nhất có thể; ứng dụng không ghép hai luồng riêng.')
-    return max(candidates, key=lambda f: (f.get('height') or 0, f.get('ext') == 'mp4',
+        wanted = f'đúng {quality}p' if quality is not None else 'phù hợp'
+        available = ', '.join(f'{q}p' for q in sorted(combined_levels)) or 'không có'
+        message = f'Không có link một file chứa cả hình và tiếng {wanted}. Không lấy link chất lượng khác. '
+        message += f'Chất lượng một file yt-dlp tìm thấy: {available}.'
+        if quality in separate_levels or (quality is None and separate_levels):
+            levels = [quality] if quality is not None else sorted(separate_levels)
+            message += (' Có luồng hình riêng ' + ', '.join(f'{q}p' for q in levels)
+                        + '; cần tải và ghép thêm âm thanh bằng FFmpeg để có file đầy đủ tiếng.')
+        raise ValueError(message)
+    return max(candidates, key=lambda f: (video_quality(f.get('width'), f.get('height')) or 0, f.get('ext') == 'mp4',
                                         f.get('tbr') or 0, str(f.get('format_id', ''))))
 
 
@@ -132,6 +159,9 @@ def run_batch(urls, quality, cancel, convert):
         try:
             r = convert(url, quality)
             if not r.error:
+                if quality is not None and r.quality != quality:
+                    actual = f'{r.quality}p' if r.quality else 'không xác định'
+                    raise ValueError(f'Yêu cầu đúng {quality}p nhưng nhận {actual}; không lấy link này.')
                 r = replace(r, filename=unique_filename(r.filename, used), requested_quality=quality)
         except Exception as exc:
             r = ConversionResult(url, error=str(exc), requested_quality=quality)

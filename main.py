@@ -14,9 +14,12 @@ def self_check(output):
         import yt_dlp_ejs
         from importlib.resources import files
         from app.extractor import find_deno
+        from app.downloader import find_ffmpeg
+        ffmpeg = find_ffmpeg()
         deno = find_deno()
         flags = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
         version = subprocess.check_output([str(deno), '--version'], text=True, timeout=20, **flags)
+        ffmpeg_version = subprocess.check_output([ffmpeg, '-version'], text=True, timeout=20, **flags)
         solver = files('yt_dlp_ejs').joinpath('yt', 'solver', 'core.min.js')
         library = files('yt_dlp_ejs').joinpath('yt', 'solver', 'lib.min.js')
         if not solver.is_file() or not library.is_file():
@@ -31,7 +34,7 @@ def self_check(output):
             finally:
                 root.destroy()
         result = {'ok': True, 'yt_dlp': yt_dlp.version.__version__,
-                  'deno': version.splitlines()[0], 'tcl': tcl.eval('info patchlevel'),
+                  'deno': version.splitlines()[0], 'ffmpeg': ffmpeg_version.splitlines()[0], 'tcl': tcl.eval('info patchlevel'),
                   'frozen': bool(getattr(sys, 'frozen', False))}
         code = 0
     except Exception as exc:
