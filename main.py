@@ -1,5 +1,6 @@
 """GUI entry point and headless packaged-dependency verification."""
 import argparse
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -25,7 +26,7 @@ def self_check(output):
         library = files('yt_dlp_ejs').joinpath('yt', 'solver', 'lib.min.js')
         if not solver.is_file() or not library.is_file():
             raise RuntimeError('Missing bundled yt-dlp EJS solver files')
-        with sqlite3.connect(':memory:') as database:
+        with closing(sqlite3.connect(':memory:')) as database:
             sqlite_version = database.execute('select sqlite_version()').fetchone()[0]
         # Tcl initialization checks packaged Tcl data without requiring a display.
         tcl = tkinter.Tcl()

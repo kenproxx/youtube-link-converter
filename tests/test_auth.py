@@ -108,11 +108,18 @@ class CookieAuthTests(unittest.TestCase):
         from yt_dlp import YoutubeDL
         with tempfile.TemporaryDirectory() as tmp:
             database = Path(tmp) / 'cookies.sqlite'
-            with sqlite3.connect(database) as connection:
+            with contextlib.closing(sqlite3.connect(database)) as connection, connection:
                 connection.execute('pragma user_version=16')
                 connection.execute('create table moz_cookies (host text, name text, value text, path text, expiry integer, isSecure integer, originAttributes text)')
                 connection.execute('insert into moz_cookies values (?, ?, ?, ?, ?, ?, ?)',
                     ('.youtube.com', 'SESSION', 'fixture-secret', '/', (int(time.time()) + 3600) * 1000, 1, ''))
+            # Windows cannot delete this fixture while its writer is still open.
+            # Check the handle lifetime on every OS; close it even if this fails.
+            try:
+                with self.assertRaises(sqlite3.ProgrammingError):
+                    connection.execute('select 1')
+            finally:
+                connection.close()
             original = database.read_bytes()
             with youtube_session(extractor_options(Path('/unused')), YoutubeDL,
                                  auth=self.source(browser='firefox', profile=tmp)) as ydl:
@@ -125,13 +132,18 @@ class CookieAuthTests(unittest.TestCase):
         from yt_dlp import YoutubeDL
         from yt_dlp.cookies import WindowsChromeCookieDecryptor
         with tempfile.TemporaryDirectory() as tmp:
-            with sqlite3.connect(Path(tmp) / 'Cookies') as connection:
+            with contextlib.closing(sqlite3.connect(Path(tmp) / 'Cookies')) as connection, connection:
                 connection.execute('create table meta (key text, value text)')
                 connection.execute("insert into meta values ('version', '24')")
                 connection.execute('create table cookies (host_key text, name text, value text, encrypted_value blob, path text, expires_utc integer, is_secure integer)')
                 connection.executemany('insert into cookies values (?, ?, ?, ?, ?, ?, ?)', [
                     ('.youtube.com', 'PREF', 'fixture-pref', b'', '/', 0, 1),
                     ('.youtube.com', 'SID', '', b'v10fixture-encrypted-cookie', '/', 0, 1)])
+            try:
+                with self.assertRaises(sqlite3.ProgrammingError):
+                    connection.execute('select 1')
+            finally:
+                connection.close()
             def decryptor(root, browser, logger, **kwargs):
                 return WindowsChromeCookieDecryptor(root, logger, meta_version=24)
             with patch('yt_dlp.cookies.get_cookie_decryptor', side_effect=decryptor), \
